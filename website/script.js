@@ -106,11 +106,11 @@ const products = [
   },
   {
     id: 14,
-    name: "Wireless Charger",
+    name: "Wireless Headphones",
     price: 2489,
     image: "https://images.unsplash.com/photo-1583394838336-acd977736f90",
     category: "accessories",
-    description: "Fast wireless charging pad"
+    description: "Best wireless headphones for music lovers"
   },
   {
     id: 15,
@@ -121,6 +121,9 @@ const products = [
     description: "Waterproof Bluetooth speaker with 12-hour battery"
   }
 ];
+
+// User Authentication
+let currentUser = null;
 
 // DOM Elements
 const productList = document.getElementById('product-list');
@@ -134,6 +137,11 @@ const cartModal = document.getElementById('cart-modal');
 const checkoutForm = document.getElementById('checkout-form');
 const orderItems = document.getElementById('order-items');
 const finalTotal = document.getElementById('final-total');
+const loginModal = document.getElementById('login-modal');
+const signupModal = document.getElementById('signup-modal');
+const loginForm = document.getElementById('login-form');
+const signupForm = document.getElementById('signup-form');
+const authButtons = document.querySelector('.header-buttons');
 
 // Cart state
 let cart = [];
@@ -143,7 +151,14 @@ let currentCategory = 'all';
 function init() {
   displayProducts();
   setupEventListeners();
-  updateCart(); // Initialize cart display
+  updateCart();
+  initAuth();
+}
+
+// Show cart modal
+function showCart() {
+  cartModal.style.display = 'block';
+  updateCart();
 }
 
 // Toggle cart modal
@@ -152,13 +167,13 @@ function toggleCart() {
     cartModal.style.display = 'none';
   } else {
     cartModal.style.display = 'block';
-    updateCart(); // Update cart display when opening
+    updateCart();
   }
 }
 
-// Close checkout modal
-function closeCheckout() {
-  checkoutModal.style.display = 'none';
+// Close cart modal
+function closeCart() {
+  cartModal.style.display = 'none';
 }
 
 // Display products based on current category
@@ -209,7 +224,6 @@ function showSuccessMessage(message) {
   successMessage.textContent = message;
   document.body.appendChild(successMessage);
 
-  // Remove message after 2 seconds
   setTimeout(() => {
     successMessage.remove();
   }, 2000);
@@ -219,6 +233,7 @@ function showSuccessMessage(message) {
 function updateCart() {
   cartItems.innerHTML = '';
   let total = 0;
+  let totalItems = 0;
 
   if (cart.length === 0) {
     cartItems.innerHTML = '<p class="empty-cart">Your cart is empty</p>';
@@ -246,11 +261,21 @@ function updateCart() {
       `;
       cartItems.appendChild(cartItem);
       total += item.price * item.quantity;
+      totalItems += item.quantity;
     });
   }
 
-  cartCount.textContent = cart.reduce((sum, item) => sum + item.quantity, 0);
-  totalAmount.textContent = `Rs. {total.toFixed(2)}`;
+  // Update cart count
+  const cartCountElement = document.getElementById('cart-count');
+  if (cartCountElement) {
+    cartCountElement.textContent = totalItems;
+  }
+
+  // Update total amount
+  const totalAmountElement = document.getElementById('total-amount');
+  if (totalAmountElement) {
+    totalAmountElement.textContent = `Rs. ${total.toFixed(2)}`;
+  }
 }
 
 // Update item quantity
@@ -273,6 +298,11 @@ function removeFromCart(productId) {
   updateCart();
 }
 
+// Close checkout modal
+function closeCheckout() {
+  checkoutModal.style.display = 'none';
+}
+
 // Show checkout modal
 function showCheckoutModal() {
   if (cart.length === 0) {
@@ -280,13 +310,15 @@ function showCheckoutModal() {
     return;
   }
   
-  // Close cart modal
-  cartModal.style.display = 'none';
+  if (!currentUser) {
+    alert('Please login to proceed with checkout');
+    showLoginModal();
+    return;
+  }
   
-  // Show checkout modal
+  cartModal.style.display = 'none';
   checkoutModal.style.display = 'block';
   
-  // Update order items
   orderItems.innerHTML = '';
   cart.forEach(item => {
     const orderItem = document.createElement('div');
@@ -301,7 +333,6 @@ function showCheckoutModal() {
     orderItems.appendChild(orderItem);
   });
 
-  // Update total
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   finalTotal.textContent = `Rs. ${total.toFixed(2)}`;
 }
@@ -314,19 +345,39 @@ function processOrder(e) {
   const phone = document.getElementById('phone').value.trim();
   const address = document.getElementById('address').value.trim();
 
-  // Validate form inputs
   if (!name || !phone || !address) {
     alert('Please fill in all fields');
     return;
   }
 
-  // Validate phone number (basic validation)
   if (!/^\d{10}$/.test(phone)) {
     alert('Please enter a valid 10-digit phone number');
     return;
   }
 
-  // Create order confirmation
+  const order = {
+    id: Date.now(),
+    date: new Date().toISOString(),
+    customer: {
+      name: name,
+      email: currentUser.email,
+      phone: phone,
+      address: address
+    },
+    items: cart.map(item => ({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      total: item.price * item.quantity
+    })),
+    totalAmount: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+  };
+
+  let orders = JSON.parse(localStorage.getItem('orders') || '[]');
+  orders.push(order);
+  localStorage.setItem('orders', JSON.stringify(orders));
+
   const orderConfirmation = document.createElement('div');
   orderConfirmation.className = 'order-confirmation';
   orderConfirmation.innerHTML = `
@@ -336,18 +387,17 @@ function processOrder(e) {
       <p>Your order will be delivered to:</p>
       <p>${address}</p>
       <p>We'll contact you at: ${phone}</p>
+      <p>Order ID: ${order.id}</p>
       <p>Total Amount: Rs. ${finalTotal.textContent.replace('Rs. ', '')}</p>
       <button onclick="closeConfirmation()" class="close-confirmation">Close</button>
     </div>
   `;
   
-  // Add confirmation to body
   document.body.appendChild(orderConfirmation);
   
-  // Reset cart and close modals
   cart = [];
   updateCart();
-  checkoutModal.style.display = 'none';
+  closeCheckout();
   checkoutForm.reset();
 }
 
@@ -359,9 +409,292 @@ function closeConfirmation() {
   }
 }
 
+// View order history
+function viewOrderHistory() {
+  if (!currentUser) {
+    alert('Please login to view order history');
+    showLoginModal();
+    return;
+  }
+
+  const orders = JSON.parse(localStorage.getItem('orders') || '[]');
+  if (orders.length === 0) {
+    alert('No order history found');
+    return;
+  }
+
+  const sortedOrders = orders.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const orderHistory = document.createElement('div');
+  orderHistory.className = 'order-history';
+  orderHistory.innerHTML = `
+    <div class="order-history-content">
+      <h2>Order History</h2>
+      <div class="orders-list">
+        ${sortedOrders.map(order => `
+          <div class="order-item">
+            <h3>Order #${order.id}</h3>
+            <p>Date: ${new Date(order.date).toLocaleString()}</p>
+            <p>Customer: ${order.customer.name}</p>
+            <p>Total: Rs. ${order.totalAmount.toFixed(2)}</p>
+            <button onclick="viewOrderDetails(${order.id})">View Details</button>
+          </div>
+        `).join('')}
+      </div>
+      <button onclick="closeOrderHistory()" class="close-history">Close</button>
+    </div>
+  `;
+  
+  document.body.appendChild(orderHistory);
+}
+
+// View order details
+function viewOrderDetails(orderId) {
+  const orders = JSON.parse(localStorage.getItem('orders') || '[]');
+  const order = orders.find(o => o.id === orderId);
+  
+  if (!order) {
+    alert('Order not found');
+    return;
+  }
+
+  const orderDetails = document.createElement('div');
+  orderDetails.className = 'order-details';
+  orderDetails.innerHTML = `
+    <div class="order-details-content">
+      <h2>Order Details #${order.id}</h2>
+      <p>Date: ${new Date(order.date).toLocaleString()}</p>
+      <h3>Customer Information</h3>
+      <p>Name: ${order.customer.name}</p>
+      <p>Phone: ${order.customer.phone}</p>
+      <p>Address: ${order.customer.address}</p>
+      <h3>Order Items</h3>
+      <div class="order-items-list">
+        ${order.items.map(item => `
+          <div class="order-item-detail">
+            <p>${item.name} x ${item.quantity}</p>
+            <p>Rs. ${item.total.toFixed(2)}</p>
+          </div>
+        `).join('')}
+      </div>
+      <h3>Total Amount: Rs. ${order.totalAmount.toFixed(2)}</h3>
+      <button onclick="closeOrderDetails()" class="close-details">Close</button>
+    </div>
+  `;
+  
+  document.body.appendChild(orderDetails);
+}
+
+// Close order history
+function closeOrderHistory() {
+  const orderHistory = document.querySelector('.order-history');
+  if (orderHistory) {
+    orderHistory.remove();
+  }
+}
+
+// Close order details
+function closeOrderDetails() {
+  const orderDetails = document.querySelector('.order-details');
+  if (orderDetails) {
+    orderDetails.remove();
+  }
+}
+
+// Show Login Modal
+function showLoginModal() {
+  loginModal.style.display = 'block';
+  signupModal.style.display = 'none';
+  // Clear login form fields
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-password').value = '';
+}
+
+// Close Login Modal
+function closeLoginModal() {
+  loginModal.style.display = 'none';
+  // Clear login form fields
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-password').value = '';
+}
+
+// Show Signup Modal
+function showSignupModal() {
+  signupModal.style.display = 'block';
+  loginModal.style.display = 'none';
+  // Clear signup form fields
+  document.getElementById('signup-name').value = '';
+  document.getElementById('signup-email').value = '';
+  document.getElementById('signup-password').value = '';
+  document.getElementById('signup-confirm-password').value = '';
+}
+
+// Close Signup Modal
+function closeSignupModal() {
+  signupModal.style.display = 'none';
+  // Clear signup form fields
+  document.getElementById('signup-name').value = '';
+  document.getElementById('signup-email').value = '';
+  document.getElementById('signup-password').value = '';
+  document.getElementById('signup-confirm-password').value = '';
+}
+
+// Switch to Signup
+function switchToSignup() {
+  closeLoginModal();
+  showSignupModal();
+}
+
+// Switch to Login
+function switchToLogin() {
+  closeSignupModal();
+  showLoginModal();
+}
+
+// Handle Login
+function handleLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-password').value;
+
+  const users = JSON.parse(localStorage.getItem('users') || '[]');
+  const user = users.find(u => u.email === email && u.password === password);
+
+  if (user) {
+    currentUser = {
+      name: user.name,
+      email: user.email
+    };
+    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+    updateAuthUI();
+    closeLoginModal();
+    showSuccessMessage('Login successful!');
+  } else {
+    alert('Invalid email or password');
+  }
+}
+
+// Handle Signup
+function handleSignup(e) {
+  e.preventDefault();
+  const name = document.getElementById('signup-name').value;
+  const email = document.getElementById('signup-email').value;
+  const password = document.getElementById('signup-password').value;
+  const confirmPassword = document.getElementById('signup-confirm-password').value;
+
+  if (password !== confirmPassword) {
+    alert('Passwords do not match');
+    return;
+  }
+
+  const users = JSON.parse(localStorage.getItem('users') || '[]');
+
+  if (users.some(u => u.email === email)) {
+    alert('Email already registered');
+    return;
+  }
+
+  const newUser = {
+    name,
+    email,
+    password
+  };
+
+  users.push(newUser);
+  localStorage.setItem('users', JSON.stringify(users));
+  
+  // Auto-login after successful signup
+  currentUser = {
+    name: newUser.name,
+    email: newUser.email
+  };
+  localStorage.setItem('currentUser', JSON.stringify(currentUser));
+  updateAuthUI();
+  
+  showSuccessMessage('Signup successful!');
+  closeSignupModal();
+}
+
+// Update Authentication UI
+function updateAuthUI() {
+  const headerButtons = document.querySelector('.header-buttons');
+  if (currentUser) {
+    headerButtons.innerHTML = `
+      <div class="user-profile" onclick="toggleDropdown()">
+        <i class="fas fa-user-circle"></i>
+        <span>${currentUser.name}</span>
+        <div class="dropdown-menu">
+          <button onclick="viewOrderHistory()">
+            <i class="fas fa-history"></i>
+            Order History
+          </button>
+          <button onclick="logout()">
+            <i class="fas fa-sign-out-alt"></i>
+            Logout
+          </button>
+        </div>
+      </div>
+      <button class="cart-icon" onclick="showCart()">
+        <i class="fas fa-shopping-cart"></i>
+        <span id="cart-count">0</span>
+      </button>
+    `;
+  } else {
+    headerButtons.innerHTML = `
+      <button class="login-btn" onclick="showLoginModal()">
+        <i class="fas fa-sign-in-alt"></i> Login
+      </button>
+      <button class="cart-icon" onclick="showCart()">
+        <i class="fas fa-shopping-cart"></i>
+        <span id="cart-count">0</span>
+      </button>
+    `;
+  }
+}
+
+// Toggle Dropdown Menu
+function toggleDropdown() {
+  const dropdown = document.querySelector('.dropdown-menu');
+  dropdown.classList.toggle('show');
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.user-profile')) {
+    const dropdown = document.querySelector('.dropdown-menu');
+    if (dropdown) {
+      dropdown.classList.remove('show');
+    }
+  }
+});
+
+// Handle Logout
+function logout() {
+  currentUser = null;
+  localStorage.removeItem('currentUser');
+  updateAuthUI();
+  showSuccessMessage('Logged out successfully');
+  // Clear all form fields
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-password').value = '';
+  document.getElementById('signup-name').value = '';
+  document.getElementById('signup-email').value = '';
+  document.getElementById('signup-password').value = '';
+  document.getElementById('signup-confirm-password').value = '';
+}
+
+// Initialize Authentication
+function initAuth() {
+  const savedUser = localStorage.getItem('currentUser');
+  if (savedUser) {
+    currentUser = JSON.parse(savedUser);
+  }
+  updateAuthUI();
+}
+
 // Setup event listeners
 function setupEventListeners() {
-  // Category filter buttons
+  // Category buttons
   categoryButtons.forEach(button => {
     button.addEventListener('click', () => {
       categoryButtons.forEach(btn => btn.classList.remove('active'));
@@ -374,20 +707,50 @@ function setupEventListeners() {
   // Checkout button
   checkoutBtn.addEventListener('click', showCheckoutModal);
 
-  // Checkout form submission
+  // Checkout form
   checkoutForm.addEventListener('submit', processOrder);
+
+  // Login form
+  loginForm.addEventListener('submit', handleLogin);
+
+  // Signup form
+  signupForm.addEventListener('submit', handleSignup);
 
   // Close modals when clicking outside
   window.addEventListener('click', (e) => {
     if (e.target === cartModal) {
-      cartModal.style.display = 'none';
+      closeCart();
     }
     if (e.target === checkoutModal) {
-      checkoutModal.style.display = 'none';
+      closeCheckout();
+    }
+    if (e.target === loginModal) {
+      closeLoginModal();
+    }
+    if (e.target === signupModal) {
+      closeSignupModal();
+    }
+  });
+
+  // Close modals when pressing Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (cartModal.style.display === 'block') {
+        closeCart();
+      }
+      if (checkoutModal.style.display === 'block') {
+        closeCheckout();
+      }
+      if (loginModal.style.display === 'block') {
+        closeLoginModal();
+      }
+      if (signupModal.style.display === 'block') {
+        closeSignupModal();
+      }
     }
   });
 }
 
-// Initialize the application
-init();
+// Initialize the application when the DOM is loaded
+document.addEventListener('DOMContentLoaded', init);
   
